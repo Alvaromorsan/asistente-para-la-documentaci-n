@@ -108,7 +108,7 @@
 
     .grid-roles {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 10px;
     }
 
@@ -121,7 +121,7 @@
       font-weight: 600;
       font-size: 0.9rem;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.2s ease;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -139,7 +139,6 @@
       color: white;
       border-color: var(--primary);
       box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-      transform: translateY(-1px);
     }
 
     .bar-status {
@@ -164,7 +163,6 @@
       font-size: 0.88rem;
       padding: 4px 8px;
       border-radius: 6px;
-      transition: background 0.2s;
     }
 
     .btn-sync:hover {
@@ -179,11 +177,6 @@
       padding: 22px;
       margin-bottom: 18px;
       box-shadow: var(--shadow-sm);
-      transition: box-shadow 0.2s, transform 0.2s;
-    }
-
-    .tarea-card:hover {
-      box-shadow: var(--shadow-md);
     }
 
     .tarea-card.con-retraso {
@@ -283,14 +276,20 @@
   </header>
 
   <div class="roles-section">
-    <div class="roles-section-title">Selecciona tu rol docente:</div>
-    <div class="grid-roles" id="grid-roles">
-      <div style="color:var(--text-muted); font-size:0.9rem;">Cargando roles desde Google Sheets...</div>
+    <div class="roles-section-title">SELECCIONA TU ROL DOCENTE:</div>
+    <div class="grid-roles">
+      <button class="btn-rol" onclick="filtrarRol('Profesor (ESO)', this)">📋 Profesor (ESO)</button>
+      <button class="btn-rol" onclick="filtrarRol('Profesor (FP)', this)">📋 Profesor (FP)</button>
+      <button class="btn-rol" onclick="filtrarRol('Jefe de Departamento', this)">📋 Jefe de Departamento</button>
+      <button class="btn-rol" onclick="filtrarRol('Tutor (ESO)', this)">📋 Tutor (ESO)</button>
+      <button class="btn-rol" onclick="filtrarRol('Tutor (FP)', this)">📋 Tutor (FP)</button>
+      <button class="btn-rol" onclick="filtrarRol('Orientador', this)">📋 Orientador</button>
+      <button class="btn-rol" onclick="filtrarRol('Jefe del DACE', this)">📋 Jefe del DACE</button>
     </div>
   </div>
 
   <div class="bar-status">
-    <span id="txt-status">Elige un rol superior para cargar tus tareas.</span>
+    <span id="txt-status">⏳ Sincronizando...</span>
     <button class="btn-sync" onclick="cargarDatos()">🔄 Sincronizar</button>
   </div>
 
@@ -303,82 +302,33 @@
 </div>
 
 <script>
-  // PEGA AQUÍ LA URL DE TU GOOGLE SHEETS PUBLICADO COMO CSV
-  const CSV_URL = 'URL_DE_TU_GOOGLE_SHEETS_CSV';
+  // Coloca aquí el enlace publicado de tu Google Sheets en formato CSV
+  const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTw-joIwxwmIL6BGsYebAw4X6iI9nxk5DijWImHsYEeG_WT_GGdt1BgCeNkp03ll0K-t9JGzly5ivdc/pub?gid=0&single=true&output=csv';
 
   let datosCSV = [];
-  let rolActual = '';
+  let rolSeleccionado = '';
 
-  function normalizarTexto(str) {
-    if (!str) return '';
-    return str.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita tildes
-      .replace(/^[a-z0-9][\).\s]\s*/i, '')              // Quita prefijos tipo "a) ", "b) "
-      .trim();
-  }
-
-  function limpiarNombreVisible(str) {
-    if (!str) return '';
-    return str.replace(/^[a-z0-9][\).\s]\s*/i, '').trim();
+  function normalizar(texto) {
+    return texto ? texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : '';
   }
 
   async function cargarDatos() {
-    document.getElementById('txt-status').innerText = '⏳ Sincronizando con Google Sheets...';
+    const status = document.getElementById('txt-status');
+    status.innerText = '⏳ Sincronizando datos...';
+
     try {
-      const response = await fetch(CSV_URL + '&nocache=' + new Date().getTime());
+      const response = await fetch(CSV_URL + (CSV_URL.includes('?') ? '&' : '?') + 'nocache=' + new Date().getTime());
       const text = await response.text();
       datosCSV = parseCSV(text);
-      document.getElementById('txt-status').innerText = '✅ Datos actualizados al instante.';
-      
-      generarBotonesRoles();
+      status.innerText = '✅ Datos actualizados al instante.';
 
-      if (rolActual) {
-        const btnActivo = Array.from(document.querySelectorAll('.btn-rol')).find(b => b.innerText.includes(rolActual));
-        if (btnActivo) filtrarRol(rolActual, btnActivo);
+      if (rolSeleccionado) {
+        const btn = Array.from(document.querySelectorAll('.btn-rol')).find(b => b.innerText.includes(rolSeleccionado));
+        filtrarRol(rolSeleccionado, btn);
       }
     } catch (e) {
-      document.getElementById('contenedor-tareas').innerHTML = `
-        <div class="state-box" style="border-color:#fecdd3; background:#fff1f2;">
-          <h3 style="color:#9f1239;">Error de conexión</h3>
-          <p>No se han podido obtener los datos de Google Sheets. Asegúrate de haber publicado la hoja correctamente como CSV.</p>
-        </div>`;
+      status.innerText = '⚠️ Error al cargar los datos del CSV.';
     }
-  }
-
-  function generarBotonesRoles() {
-    const contenedorBotones = document.getElementById('grid-roles');
-    contenedorBotones.innerHTML = '';
-
-    const setRoles = new Set();
-
-    datosCSV.forEach(f => {
-      const claveMostrar = Object.keys(f).find(k => normalizarTexto(k) === 'mostrar');
-      const claveRol = Object.keys(f).find(k => normalizarTexto(k) === 'rol');
-
-      if (claveMostrar && claveRol) {
-        const valMostrar = normalizarTexto(f[claveMostrar]);
-        const estaActivo = (valMostrar === 'si' || valMostrar === 's');
-        const rolTexto = f[claveRol] ? f[claveRol].trim() : '';
-
-        if (estaActivo && rolTexto) {
-          const rolLimpio = limpiarNombreVisible(rolTexto);
-          if (rolLimpio) setRoles.add(rolLimpio);
-        }
-      }
-    });
-
-    if (setRoles.size === 0) {
-      contenedorBotones.innerHTML = `<div style="color:var(--text-muted); font-size:0.9rem;">No hay tareas marcadas con 'Sí' en la columna Mostrar de la hoja.</div>`;
-      return;
-    }
-
-    Array.from(setRoles).sort().forEach(rol => {
-      const btn = document.createElement('button');
-      btn.className = 'btn-rol';
-      btn.innerHTML = `📋 ${rol}`;
-      btn.onclick = function() { filtrarRol(rol, this); };
-      contenedorBotones.appendChild(btn);
-    });
   }
 
   function parseCSV(text) {
@@ -435,12 +385,13 @@
   }
 
   function autoLinkify(texto) {
+    if (!texto) return '';
     const regex = /(https?:\/\/[^\s]+)/g;
     return texto.replace(regex, url => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
   }
 
   function filtrarRol(nombreRol, elementoBoton) {
-    rolActual = nombreRol;
+    rolSeleccionado = nombreRol;
 
     document.querySelectorAll('.btn-rol').forEach(b => b.classList.remove('active'));
     if (elementoBoton) elementoBoton.classList.add('active');
@@ -451,57 +402,54 @@
     const hoy = new Date();
     hoy.setHours(0,0,0,0);
 
-    const rolBuscadoLimpio = normalizarTexto(nombreRol);
+    const rolBuscado = normalizar(nombreRol);
 
     const tareas = datosCSV.filter(f => {
-      const claveMostrar = Object.keys(f).find(k => normalizarTexto(k) === 'mostrar');
-      const claveRol = Object.keys(f).find(k => normalizarTexto(k) === 'rol');
+      const keyMostrar = Object.keys(f).find(k => normalizar(k) === 'mostrar');
+      const keyRol = Object.keys(f).find(k => normalizar(k) === 'rol');
 
-      if (!claveMostrar || !claveRol) return false;
+      if (!keyMostrar || !keyRol) return false;
 
-      const valMostrar = normalizarTexto(f[claveMostrar]);
-      const valorRol = normalizarTexto(f[claveRol]);
+      const valMostrar = normalizar(f[keyMostrar]);
+      const valRol = normalizar(f[keyRol]);
 
-      const estaActivo = (valMostrar === 'si' || valMostrar === 's');
-      const coincideRol = valorRol.includes(rolBuscadoLimpio) || rolBuscadoLimpio.includes(valorRol);
+      const estaActivo = valMostrar.startsWith('s'); // Detecta 'Sí', 'si', 's'
+      const coincideRol = valRol.includes(rolBuscado);
 
       return estaActivo && coincideRol;
-    });
-
-    tareas.sort((a, b) => {
-      let fechaA = parseFecha(a.Fecha);
-      let fechaB = parseFecha(b.Fecha);
-      if (!fechaA) return 1;
-      if (!fechaB) return -1;
-      return fechaA - fechaB;
     });
 
     if (tareas.length === 0) {
       contenedor.innerHTML = `
         <div class="state-box">
           <h3>Sin tareas pendientes</h3>
-          <p>No constan instrucciones activas registradas para el rol <strong>${nombreRol}</strong>.</p>
+          <p>No constan tareas marcadas como visibles ('Sí') para <strong>${nombreRol}</strong>.</p>
         </div>`;
       return;
     }
 
     tareas.forEach(t => {
+      const keyAccion = Object.keys(t).find(k => normalizar(k) === 'accion') || 'Acción';
+      const keyFecha = Object.keys(t).find(k => normalizar(k) === 'fecha') || 'Fecha';
+      const keyInstruccion = Object.keys(t).find(k => normalizar(k) === 'instruccion') || 'Instrucción';
+      const keyRol = Object.keys(t).find(k => normalizar(k) === 'rol') || 'Rol';
+
       let esRetraso = false;
-      let fechaObj = parseFecha(t.Fecha);
+      let fechaObj = parseFecha(t[keyFecha]);
       if (fechaObj && fechaObj < hoy) {
         esRetraso = true;
       }
 
-      let textoInstrucciones = autoLinkify(t.Instrucción || t.Instruccion || '');
+      let textoInstrucciones = autoLinkify(t[keyInstruccion]);
 
       let htmlCard = `
         <div class="tarea-card ${esRetraso ? 'con-retraso' : ''}">
           ${esRetraso ? '<div class="alerta-retraso">⚠️ ¡ATENCIÓN! Esta tarea ya cuenta con retraso en la entrega</div>' : ''}
-          <h2 class="tarea-titulo">📌 ${t.Acción || t.Accion || 'Sin nombre'}</h2>
+          <h2 class="tarea-titulo">📌 ${t[keyAccion] || 'Sin nombre'}</h2>
           
           <div class="meta-badges">
-            <span class="badge badge-rol">👤 ${limpiarNombreVisible(t.Rol)}</span>
-            <span class="badge badge-fecha">📅 Fecha límite: ${t.Fecha || 'Sin fecha'}</span>
+            <span class="badge badge-rol">👤 ${t[keyRol]}</span>
+            <span class="badge badge-fecha">📅 Fecha límite: ${t[keyFecha] || 'Sin fecha'}</span>
           </div>
 
           <div class="instrucciones-box">${textoInstrucciones}</div>
@@ -512,7 +460,7 @@
   }
 
   function parseFecha(fechaStr) {
-    if (!fechaStr || fechaStr.toLowerCase().includes('sin fecha')) return null;
+    if (!fechaStr || normalizar(fechaStr).includes('sin fecha')) return null;
     let partes = fechaStr.split(/[\/-]/);
     if (partes.length === 3) {
       let dia = parseInt(partes[0], 10);
