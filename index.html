@@ -230,6 +230,26 @@
     .badge-fecha {
       background-color: var(--date-badge-bg);
       color: var(--date-badge-text);
+      transition: all 0.3s ease;
+    }
+
+    /* PARPADEO LEVE Y SUTIL EXCLUSIVO DE LA ETIQUETA DE FECHA VENCIDA */
+    @keyframes parpadeoLeve {
+      0%, 100% {
+        background-color: #fecdd3;
+        color: #9f1239;
+        opacity: 1;
+      }
+      50% {
+        background-color: #ffe4e6;
+        color: #be123c;
+        opacity: 0.55;
+      }
+    }
+
+    .badge-fecha.caducada {
+      animation: parpadeoLeve 2.2s infinite ease-in-out;
+      border: 1px solid #fca5a5;
     }
 
     .instrucciones-box {
@@ -390,6 +410,52 @@
     return texto.replace(regex, url => `<a href="${url}" target="_blank" rel="noopener">${url}</a>`);
   }
 
+  // LECTURA DE FECHAS EN ESPAÑOL (ej. "jueves 7 de mayo", "07/05/2026", "15 de octubre")
+  function parseFecha(fechaStr) {
+    if (!fechaStr) return null;
+    const str = normalizar(fechaStr);
+    if (str.includes('sin fecha')) return null;
+
+    const meses = {
+      'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
+      'julio': 6, 'agosto': 7, 'septiembre': 8, 'setiembre': 8, 'octubre': 9,
+      'noviembre': 10, 'diciembre': 11
+    };
+
+    // 1. Detección por nombre de mes en texto (ej. "jueves 7 de mayo")
+    for (let mesNom in meses) {
+      if (str.includes(mesNom)) {
+        const numMatch = str.match(/\b(\d{1,2})\b/);
+        if (numMatch) {
+          let dia = parseInt(numMatch[1], 10);
+          let mes = meses[mesNom];
+          const anioMatch = str.match(/\b(20\d{2})\b/);
+          let hoy = new Date();
+          let anio = anioMatch ? parseInt(anioMatch[1], 10) : hoy.getFullYear();
+          return new Date(anio, mes, dia);
+        }
+      }
+    }
+
+    // 2. Detección numérica (ej. "07/05/2026" o "07-05-2026")
+    let partes = str.split(/[\/-]/);
+    if (partes.length === 3) {
+      let p1 = parseInt(partes[0], 10);
+      let p2 = parseInt(partes[1], 10);
+      let p3 = parseInt(partes[2], 10);
+      if (!isNaN(p1) && !isNaN(p2) && !isNaN(p3)) {
+        if (p1 > 1000) {
+          return new Date(p1, p2 - 1, p3);
+        } else {
+          if (p3 < 100) p3 += 2000;
+          return new Date(p3, p2 - 1, p1);
+        }
+      }
+    }
+
+    return null;
+  }
+
   function filtrarRol(nombreRol, elementoBoton) {
     rolSeleccionado = nombreRol;
 
@@ -404,7 +470,8 @@
 
     const rolBuscado = normalizar(nombreRol);
 
-    const tareas = datosCSV.filter(f => {
+    // 1. Filtrar tareas activas por el rol docente
+    let tareas = datosCSV.filter(f => {
       const keyMostrar = Object.keys(f).find(k => normalizar(k) === 'mostrar');
       const keyRol = Object.keys(f).find(k => normalizar(k) === 'rol');
 
@@ -413,7 +480,7 @@
       const valMostrar = normalizar(f[keyMostrar]);
       const valRol = normalizar(f[keyRol]);
 
-      const estaActivo = valMostrar.startsWith('s'); // Detecta 'Sí', 'si', 's'
+      const estaActivo = valMostrar.startsWith('s');
       const coincideRol = valRol.includes(rolBuscado);
 
       return estaActivo && coincideRol;
@@ -428,6 +495,24 @@
       return;
     }
 
+    // 2. Asignar objeto Date para ordenación
+    tareas = tareas.map(t => {
+      const keyFecha = Object.keys(t).find(k => normalizar(k) === 'fecha') || 'Fecha';
+      return {
+        ...t,
+        _fechaObj: parseFecha(t[keyFecha])
+      };
+    });
+
+    // 3. Ordenar cronológicamente (más pronto a más tarde, 'Sin fecha' al final)
+    tareas.sort((a, b) => {
+      if (!a._fechaObj && !b._fechaObj) return 0;
+      if (!a._fechaObj) return 1;  // Sin fecha al final
+      if (!b._fechaObj) return -1;
+      return a._fechaObj - b._fechaObj;
+    });
+
+    // 4. Dibujar las tareas en pantalla
     tareas.forEach(t => {
       const keyAccion = Object.keys(t).find(k => normalizar(k) === 'accion') || 'Acción';
       const keyFecha = Object.keys(t).find(k => normalizar(k) === 'fecha') || 'Fecha';
@@ -435,8 +520,7 @@
       const keyRol = Object.keys(t).find(k => normalizar(k) === 'rol') || 'Rol';
 
       let esRetraso = false;
-      let fechaObj = parseFecha(t[keyFecha]);
-      if (fechaObj && fechaObj < hoy) {
+      if (t._fechaObj && t._fechaObj < hoy) {
         esRetraso = true;
       }
 
@@ -449,7 +533,7 @@
           
           <div class="meta-badges">
             <span class="badge badge-rol">👤 ${t[keyRol]}</span>
-            <span class="badge badge-fecha">📅 Fecha límite: ${t[keyFecha] || 'Sin fecha'}</span>
+            <span class="badge badge-fecha ${esRetraso ? 'caducada' : ''}">📅 Fecha límite: ${t[keyFecha] || 'Sin fecha'}</span>
           </div>
 
           <div class="instrucciones-box">${textoInstrucciones}</div>
@@ -457,19 +541,6 @@
       `;
       contenedor.innerHTML += htmlCard;
     });
-  }
-
-  function parseFecha(fechaStr) {
-    if (!fechaStr || normalizar(fechaStr).includes('sin fecha')) return null;
-    let partes = fechaStr.split(/[\/-]/);
-    if (partes.length === 3) {
-      let dia = parseInt(partes[0], 10);
-      let mes = parseInt(partes[1], 10) - 1;
-      let anio = parseInt(partes[2], 10);
-      if (anio < 100) anio += 2000;
-      return new Date(anio, mes, dia);
-    }
-    return null;
   }
 
   cargarDatos();
